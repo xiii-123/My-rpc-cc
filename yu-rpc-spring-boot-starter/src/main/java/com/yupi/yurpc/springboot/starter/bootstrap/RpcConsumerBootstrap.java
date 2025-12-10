@@ -1,6 +1,5 @@
 package com.yupi.yurpc.springboot.starter.bootstrap;
 
-import com.yupi.yurpc.async.AsyncServiceProxyFactory;
 import com.yupi.yurpc.proxy.ServiceProxyFactory;
 import com.yupi.yurpc.springboot.starter.annotation.RpcReference;
 import lombok.extern.slf4j.Slf4j;
@@ -41,20 +40,11 @@ public class RpcConsumerBootstrap implements BeanPostProcessor {
                     interfaceClass = field.getType();
                 }
                 field.setAccessible(true);
-                Object proxyObject;
+                Object proxyObject = null;
 
-                // 根据async参数选择创建同步或异步代理
-                if (rpcReference.async()) {
-                    // 创建异步代理
-                    proxyObject = AsyncServiceProxyFactory.getProxy(interfaceClass);
-                    log.info("创建异步服务代理: {}", interfaceClass.getName());
-                } else {
-                    // 创建同步代理（保持原有逻辑）
-                    proxyObject = ServiceProxyFactory.getProxy(interfaceClass);
-                    log.info("创建同步服务代理: {}", interfaceClass.getName());
-                }
-
+                // 创建服务代理
                 try {
+                    proxyObject = ServiceProxyFactory.getProxy(interfaceClass);
                     field.set(bean, proxyObject);
                     field.setAccessible(false);
                 } catch (IllegalAccessException e) {

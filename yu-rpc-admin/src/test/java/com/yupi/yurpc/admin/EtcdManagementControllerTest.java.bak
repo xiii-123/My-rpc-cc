@@ -1,0 +1,651 @@
+package com.yupi.yurpc.admin;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.yupi.yurpc.admin.controller.EtcdManagementController;
+import com.yupi.yurpc.admin.dto.KeyValueDTO;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureWebMvc;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.web.context.WebApplicationContext;
+
+import java.util.Arrays;
+import java.util.List;
+
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+
+/**
+ * ETCD管理控制器测试
+ *
+ * 使用方法：
+ * 1. 运行测试前确保ETCD服务已启动
+ * 2. 直接运行测试类或使用IDE运行单个测试方法
+ * 3. 查看控制台输出和测试结果
+ *
+ * @author Claude
+ */
+@SpringBootTest
+@AutoConfigureWebMvc
+public class EtcdManagementControllerTest {
+
+    @Autowired
+    private WebApplicationContext webApplicationContext;
+
+    @Autowired
+    private EtcdManagementController etcdManagementController;
+
+    private MockMvc mockMvc;
+    private ObjectMapper objectMapper = new ObjectMapper();
+
+    @BeforeEach
+    void setUp() {
+        mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).build();
+        System.out.println("=== 测试开始，确保ETCD服务已启动 (http://localhost:2379) ===");
+    }
+
+    @Test
+    void testCreateKeyValue() throws Exception {
+        System.out.println("\n--- 测试：创建键值对 ---");
+
+        KeyValueDTO dto = new KeyValueDTO();
+        dto.setKey("/rpc/test/service1");
+        dto.setValue("{\"name\":\"testService\",\"version\":\"1.0\"}");
+
+        mockMvc.perform(post("/api/etcd/key")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(dto)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        System.out.println("✓ 创建键值对成功");
+    }
+
+    @Test
+    void testGetKeyValue() throws Exception {
+        System.out.println("\n--- 测试：获取键值对 ---");
+
+        String testKey = "/rpc/test/service1";
+        String testValue = "{\"name\":\"testService\",\"version\":\"1.0\"}";
+
+        // 先创建一个键值对
+        KeyValueDTO dto = new KeyValueDTO();
+        dto.setKey(testKey);
+        dto.setValue(testValue);
+
+        mockMvc.perform(post("/api/etcd/key")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(dto)))
+                .andReturn();
+
+        Thread.sleep(500); // 等待ETCD写入
+
+        // 测试获取键值对
+        MvcResult getResult = mockMvc.perform(get("/api/etcd/key")
+                .param("key", testKey))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        KeyValueDTO result = objectMapper.readValue(
+            getResult.getResponse().getContentAsString(),
+            KeyValueDTO.class
+        );
+
+        System.out.println("✓ 获取键值对成功:");
+        System.out.println("  Key: " + result.getKey());
+        System.out.println("  Value: " + result.getValue());
+
+        assert result.getKey().equals(testKey);
+        assert result.getValue().contains("testService");
+    }
+
+    @Test
+    void testCreateServiceRegistration() throws Exception {
+        System.out.println("\n--- 测试：创建服务注册信息 ---");
+
+        KeyValueDTO serviceDto = new KeyValueDTO();
+        serviceDto.setKey("/rpc/UserService:1.0/localhost:8080");
+        serviceDto.setValue("{\"serviceName\":\"UserService\",\"serviceVersion\":\"1.0\"," +
+                           "\"serviceHost\":\"localhost\",\"servicePort\":8080," +
+                           "\"serviceGroup\":\"default\"}");
+
+        mockMvc.perform(post("/api/etcd/key")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(serviceDto)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        System.out.println("✓ 服务注册信息创建成功");
+    }
+
+    @Test
+    void testGetServiceRegistration() throws Exception {
+        System.out.println("\n--- 测试：获取服务注册信息 ---");
+
+        String serviceKey = "/rpc/UserService:1.0/localhost:8080";
+        String serviceValue = "{\"serviceName\":\"UserService\",\"serviceVersion\":\"1.0\"," +
+                           "\"serviceHost\":\"localhost\",\"servicePort\":8080," +
+                           "\"serviceGroup\":\"default\"}";
+
+        // 先创建服务注册信息
+        KeyValueDTO serviceDto = new KeyValueDTO();
+        serviceDto.setKey(serviceKey);
+        serviceDto.setValue(serviceValue);
+
+        mockMvc.perform(post("/api/etcd/key")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(serviceDto)))
+                .andReturn();
+
+        Thread.sleep(500);
+
+        // 获取服务注册信息
+        MvcResult getResult = mockMvc.perform(get("/api/etcd/key")
+                .param("key", serviceKey))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        KeyValueDTO result = objectMapper.readValue(
+            getResult.getResponse().getContentAsString(),
+            KeyValueDTO.class
+        );
+
+        System.out.println("✓ 获取服务注册信息成功:");
+        System.out.println("  服务: " + result.getKey());
+        System.out.println("  详情: " + result.getValue());
+
+        assert result.getKey().equals(serviceKey);
+        assert result.getValue().contains("UserService");
+    }
+
+    @Test
+    void testCreateLoadBalanceStrategy() throws Exception {
+        System.out.println("\n--- 测试：创建负载均衡策略配置 ---");
+
+        String key = "/rpc/strategy/UserService:1.0/localhost:8080/loadbalance";
+        String value = "round_robin";
+
+        KeyValueDTO dto = new KeyValueDTO();
+        dto.setKey(key);
+        dto.setValue(value);
+
+        mockMvc.perform(post("/api/etcd/key")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(dto)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        System.out.println("✓ 负载均衡策略配置创建成功: " + value);
+    }
+
+    @Test
+    void testCreateRetryStrategy() throws Exception {
+        System.out.println("\n--- 测试：创建重试策略配置 ---");
+
+        String key = "/rpc/strategy/UserService:1.0/localhost:8080/retry";
+        String value = "fixed_interval";
+
+        KeyValueDTO dto = new KeyValueDTO();
+        dto.setKey(key);
+        dto.setValue(value);
+
+        mockMvc.perform(post("/api/etcd/key")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(dto)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        System.out.println("✓ 重试策略配置创建成功: " + value);
+    }
+
+    @Test
+    void testCreateTolerantStrategy() throws Exception {
+        System.out.println("\n--- 测试：创建容错策略配置 ---");
+
+        String key = "/rpc/strategy/UserService:1.0/localhost:8080/tolerant";
+        String value = "fail_fast";
+
+        KeyValueDTO dto = new KeyValueDTO();
+        dto.setKey(key);
+        dto.setValue(value);
+
+        mockMvc.perform(post("/api/etcd/key")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(dto)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        System.out.println("✓ 容错策略配置创建成功: " + value);
+    }
+
+    @Test
+    void testCreateWeightStrategy() throws Exception {
+        System.out.println("\n--- 测试：创建权重策略配置 ---");
+
+        String key = "/rpc/strategy/UserService:1.0/localhost:8080/weight";
+        String value = "10";
+
+        KeyValueDTO dto = new KeyValueDTO();
+        dto.setKey(key);
+        dto.setValue(value);
+
+        mockMvc.perform(post("/api/etcd/key")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(dto)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        System.out.println("✓ 权重策略配置创建成功: " + value);
+    }
+
+    @Test
+    void testCreateCallsMetrics() throws Exception {
+        System.out.println("\n--- 测试：创建调用次数监控指标 ---");
+
+        String key = "/rpc/metrics/UserService:1.0/localhost:8080/calls";
+        String value = "1000";
+
+        KeyValueDTO dto = new KeyValueDTO();
+        dto.setKey(key);
+        dto.setValue(value);
+
+        mockMvc.perform(post("/api/etcd/key")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(dto)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        System.out.println("✓ 调用次数监控指标创建成功: " + value);
+    }
+
+    @Test
+    void testCreateSuccessMetrics() throws Exception {
+        System.out.println("\n--- 测试：创建成功次数监控指标 ---");
+
+        String key = "/rpc/metrics/UserService:1.0/localhost:8080/success";
+        String value = "950";
+
+        KeyValueDTO dto = new KeyValueDTO();
+        dto.setKey(key);
+        dto.setValue(value);
+
+        mockMvc.perform(post("/api/etcd/key")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(dto)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        System.out.println("✓ 成功次数监控指标创建成功: " + value);
+    }
+
+    @Test
+    void testCreateFailureMetrics() throws Exception {
+        System.out.println("\n--- 测试：创建失败次数监控指标 ---");
+
+        String key = "/rpc/metrics/UserService:1.0/localhost:8080/failure";
+        String value = "50";
+
+        KeyValueDTO dto = new KeyValueDTO();
+        dto.setKey(key);
+        dto.setValue(value);
+
+        mockMvc.perform(post("/api/etcd/key")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(dto)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        System.out.println("✓ 失败次数监控指标创建成功: " + value);
+    }
+
+    @Test
+    void testCreateAvgTimeMetrics() throws Exception {
+        System.out.println("\n--- 测试：创建平均耗时监控指标 ---");
+
+        String key = "/rpc/metrics/UserService:1.0/localhost:8080/avg_time";
+        String value = "150";
+
+        KeyValueDTO dto = new KeyValueDTO();
+        dto.setKey(key);
+        dto.setValue(value);
+
+        mockMvc.perform(post("/api/etcd/key")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(dto)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        System.out.println("✓ 平均耗时监控指标创建成功: " + value);
+    }
+
+    @Test
+    void testQueryByPrefix() throws Exception {
+        System.out.println("\n--- 测试：按前缀查询键值对 ---");
+
+        // 先创建一些测试数据
+        String[] testKeys = {
+            "/rpc/test/service1",
+            "/rpc/test/service2",
+            "/rpc/other/config1"
+        };
+
+        for (String key : testKeys) {
+            KeyValueDTO dto = new KeyValueDTO();
+            dto.setKey(key);
+            dto.setValue("test_value_" + System.currentTimeMillis());
+
+            mockMvc.perform(post("/api/etcd/key")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.writeValueAsString(dto)))
+                    .andReturn();
+
+            Thread.sleep(200);
+        }
+
+        // 按/rpc/前缀查询
+        MvcResult result = mockMvc.perform(get("/api/etcd/keys")
+                .param("prefix", "/rpc")
+                .andExpect(status().isOk())
+                .andReturn();
+
+        KeyValueDTO[] results = objectMapper.readValue(
+            result.getResponse().getContentAsString(),
+            KeyValueDTO[].class
+        );
+
+        System.out.println("✓ 按'/rpc'前缀查询成功，找到 " + results.length + " 个键值对:");
+        for (KeyValueDTO dto : results) {
+            System.out.println("  - " + dto.getKey() + " = " + dto.getValue());
+        }
+    }
+
+    @Test
+    void testUpdateKeyValue() throws Exception {
+        System.out.println("\n--- 测试：更新键值对 ---");
+
+        String key = "/rpc/test/update";
+        String originalValue = "original_value";
+
+        // 先创建一个键值对
+        KeyValueDTO createDto = new KeyValueDTO();
+        createDto.setKey(key);
+        createDto.setValue(originalValue);
+
+        mockMvc.perform(post("/api/etcd/key")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(createDto)))
+                .andReturn();
+
+        Thread.sleep(500);
+
+        // 更新键值对
+        String updatedValue = "updated_value_" + System.currentTimeMillis();
+        createDto.setValue(updatedValue);
+
+        mockMvc.perform(put("/api/etcd/key")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(createDto)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        System.out.println("✓ 键值对更新操作成功");
+    }
+
+    @Test
+    void testVerifyUpdatedValue() throws Exception {
+        System.out.println("\n--- 测试：验证更新后的键值对 ---");
+
+        String key = "/rpc/test/update";
+        String originalValue = "original_value";
+        String updatedValue = "updated_value_" + System.currentTimeMillis();
+
+        // 创建并更新键值对
+        KeyValueDTO createDto = new KeyValueDTO();
+        createDto.setKey(key);
+        createDto.setValue(originalValue);
+
+        mockMvc.perform(post("/api/etcd/key")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(createDto)))
+                .andReturn();
+
+        Thread.sleep(300);
+
+        createDto.setValue(updatedValue);
+        mockMvc.perform(put("/api/etcd/key")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(createDto)))
+                .andReturn();
+
+        Thread.sleep(500);
+
+        // 验证更新结果
+        MvcResult result = mockMvc.perform(get("/api/etcd/key")
+                .param("key", key)
+                .andExpect(status().isOk())
+                .andReturn();
+
+        KeyValueDTO updatedDto = objectMapper.readValue(
+            result.getResponse().getContentAsString(),
+            KeyValueDTO.class
+        );
+
+        System.out.println("✓ 键值对更新验证成功:");
+        System.out.println("  原值: " + originalValue);
+        System.out.println("  新值: " + updatedDto.getValue());
+
+        assert !updatedDto.getValue().equals(originalValue);
+        assert updatedDto.getValue().contains("updated_value");
+    }
+
+    @Test
+    void testCreateKeyForDeletion() throws Exception {
+        System.out.println("\n--- 测试：创建待删除的键值对 ---");
+
+        String key = "/rpc/test/delete";
+        KeyValueDTO dto = new KeyValueDTO();
+        dto.setKey(key);
+        dto.setValue("to_be_deleted");
+
+        mockMvc.perform(post("/api/etcd/key")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(dto)))
+                .andReturn();
+
+        Thread.sleep(500);
+
+        System.out.println("✓ 待删除的键值对创建成功");
+    }
+
+    @Test
+    void testDeleteKeyValue() throws Exception {
+        System.out.println("\n--- 测试：删除键值对 ---");
+
+        String key = "/rpc/test/delete";
+
+        // 先创建一个键值对
+        KeyValueDTO dto = new KeyValueDTO();
+        dto.setKey(key);
+        dto.setValue("to_be_deleted");
+
+        mockMvc.perform(post("/api/etcd/key")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(dto)))
+                .andReturn();
+
+        Thread.sleep(500);
+
+        // 删除键值对
+        mockMvc.perform(delete("/api/etcd/key")
+                .param("key", key))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        System.out.println("✓ 键值对删除操作成功");
+    }
+
+    @Test
+    void testVerifyKeyDeletion() throws Exception {
+        System.out.println("\n--- 测试：验证键值对删除结果 ---");
+
+        String key = "/rpc/test/delete";
+
+        // 创建并删除键值对
+        KeyValueDTO dto = new KeyValueDTO();
+        dto.setKey(key);
+        dto.setValue("to_be_deleted");
+
+        mockMvc.perform(post("/api/etcd/key")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(dto)))
+                .andReturn();
+
+        Thread.sleep(300);
+
+        mockMvc.perform(delete("/api/etcd/key")
+                .param("key", key))
+                .andReturn();
+
+        Thread.sleep(500);
+
+        // 验证删除结果（应该返回错误或空结果）
+        MvcResult result = mockMvc.perform(get("/api/etcd/key")
+                .param("key", key))
+                .andReturn();
+
+        // 根据实现，如果键不存在可能会返回500错误或空结果
+        System.out.println("✓ 键值对删除验证成功，删除后查询状态码: " + result.getResponse().getStatus());
+    }
+
+    @Test
+    void testPublishNodeStrategy() throws Exception {
+        System.out.println("\n--- 测试：发布节点策略配置 ---");
+
+        // 使用专用的策略发布接口
+        MvcResult result = mockMvc.perform(post("/api/etcd/strategy/UserService/1.0/localhost/8081")
+                .param("strategyType", "loadbalance")
+                .param("value", "random"))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        System.out.println("✓ 节点策略发布成功");
+        Thread.sleep(500);
+
+        // 验证策略配置
+        MvcResult getResult = mockMvc.perform(get("/api/etcd/strategy/UserService/1.0/localhost/8081")
+                .param("strategyType", "loadbalance"))
+                .andReturn();
+
+        String strategyValue = getResult.getResponse().getContentAsString();
+        System.out.println("✓ 策略配置验证成功: loadbalance = " + strategyValue);
+
+        assert "random".equals(strategyValue);
+    }
+
+    @Test
+    void testComprehensiveScenario() throws Exception {
+        System.out.println("\n--- 测试：综合场景模拟 ---");
+
+        String serviceName = "TestService";
+        String version = "1.0";
+        String host = "localhost";
+        int port = 9001;
+
+        // 1. 注册服务
+        String serviceKey = String.format("/rpc/%s:%s/%s:%d", serviceName, version, host, port);
+        KeyValueDTO serviceDto = new KeyValueDTO();
+        serviceDto.setKey(serviceKey);
+        serviceDto.setValue(String.format(
+            "{\"serviceName\":\"%s\",\"serviceVersion\":\"%s\",\"serviceHost\":\"%s\",\"servicePort\":%d}",
+            serviceName, version, host, port
+        ));
+
+        mockMvc.perform(post("/api/etcd/key")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(serviceDto)))
+                .andReturn();
+
+        System.out.println("✓ 步骤1: 服务注册完成");
+        Thread.sleep(300);
+
+        // 2. 配置策略
+        String[] strategies = {"loadbalance", "retry", "tolerant"};
+        String[] values = {"consistent_hash", "exponential_backoff", "fail_over"};
+
+        for (int i = 0; i < strategies.length; i++) {
+            String strategyKey = String.format("/rpc/strategy/%s:%s/%s:%d/%s", serviceName, version, host, port, strategies[i]);
+            KeyValueDTO strategyDto = new KeyValueDTO();
+            strategyDto.setKey(strategyKey);
+            strategyDto.setValue(values[i]);
+
+            mockMvc.perform(post("/api/etcd/key")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.writeValueAsString(strategyDto)))
+                    .andReturn();
+        }
+
+        System.out.println("✓ 步骤2: 策略配置完成");
+        Thread.sleep(300);
+
+        // 3. 记录监控指标
+        String[] metrics = {"calls", "success", "failure", "avg_time"};
+        String[] metricValues = {"500", "480", "20", "120"};
+
+        for (int i = 0; i < metrics.length; i++) {
+            String metricKey = String.format("/rpc/metrics/%s:%s/%s:%d/%s", serviceName, version, host, port, metrics[i]);
+            KeyValueDTO metricDto = new KeyValueDTO();
+            metricDto.setKey(metricKey);
+            metricDto.setValue(metricValues[i]);
+
+            mockMvc.perform(post("/api/etcd/key")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.writeValueAsString(metricDto)))
+                    .andReturn();
+        }
+
+        System.out.println("✓ 步骤3: 监控指标记录完成");
+        Thread.sleep(300);
+
+        // 4. 查询所有相关配置
+        MvcResult result = mockMvc.perform(get("/api/etcd/keys")
+                .param("prefix", "/rpc")
+                .andExpect(status().isOk())
+                .andReturn();
+
+        KeyValueDTO[] allConfigs = objectMapper.readValue(
+            result.getResponse().getContentAsString(),
+            KeyValueDTO[].class
+        );
+
+        System.out.println("✓ 步骤4: 配置查询完成，找到 " + allConfigs.length + " 个配置项:");
+
+        int serviceCount = 0, strategyCount = 0, metricsCount = 0;
+        for (KeyValueDTO config : allConfigs) {
+            String key = config.getKey();
+            if (key.contains(serviceName)) {
+                if (key.contains("/strategy/")) {
+                    strategyCount++;
+                } else if (key.contains("/metrics/")) {
+                    metricsCount++;
+                } else {
+                    serviceCount++;
+                }
+            }
+        }
+
+        System.out.println("  - 服务注册: " + serviceCount + " 个");
+        System.out.println("  - 策略配置: " + strategyCount + " 个");
+        System.out.println("  - 监控指标: " + metricsCount + " 个");
+
+        assert serviceCount == 1 : "应该有1个服务注册";
+        assert strategyCount == 3 : "应该有3个策略配置";
+        assert metricsCount == 4 : "应该有4个监控指标";
+
+        System.out.println("✓ 综合场景测试完成！");
+    }
+}

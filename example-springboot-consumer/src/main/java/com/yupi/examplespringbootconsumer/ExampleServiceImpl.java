@@ -24,10 +24,10 @@ public class ExampleServiceImpl {
     private UserService userService;
 
     /**
-     * 异步服务示例
+     * 服务调用示例
      */
     @Resource
-    private AsyncServiceExample asyncServiceExample;
+    private ServiceExample serviceExample;
 
     /**
      * 原有测试方法（同步调用）
@@ -40,19 +40,29 @@ public class ExampleServiceImpl {
     }
 
     /**
-     * 异步调用示例测试方法
+     * 服务调用示例测试方法
      */
-    public void testAsyncExamples() {
-        System.out.println("开始测试异步调用示例...");
-        asyncServiceExample.runAllExamples();
+    public void testServiceExamples() {
+        System.out.println("开始测试服务调用示例...");
+        serviceExample.runAllExamples();
     }
 
     /**
-     * 快速测试同步vs异步性能对比
+     * 多次调用测试方法
      */
-    public void quickPerformanceTest() {
-        System.out.println("=== 快速性能测试 ===");
-        asyncServiceExample.concurrentCallsExample();
+    public void testMultipleCalls() {
+        System.out.println("=== 开始多次调用测试 ===");
+
+        // 测试多次调用同一用户
+        serviceExample.repeatedCallExample();
+
+        // 测试多用户调用
+        serviceExample.multipleUserExample();
+
+        // 测试不同参数
+        serviceExample.differentParamsExample();
+
+        System.out.println("=== 多次调用测试完成 ===");
     }
 
 }

@@ -15,6 +15,7 @@ import com.yupi.yurpc.loadbalancer.LoadBalancerFactory;
 import com.yupi.yurpc.model.RpcRequest;
 import com.yupi.yurpc.model.RpcResponse;
 import com.yupi.yurpc.model.ServiceMetaInfo;
+import com.yupi.yurpc.registry.EtcdRegistry;
 import com.yupi.yurpc.registry.Registry;
 import com.yupi.yurpc.registry.RegistryFactory;
 import com.yupi.yurpc.serializer.Serializer;
@@ -36,6 +37,79 @@ import java.util.Map;
  * @from <a href="https://yupi.icu">编程导航知识星球</a>
  */
 public class ServiceProxy implements InvocationHandler {
+
+    /**
+     * 获取动态策略配置
+     * 优先从ETCD获取，如果没有则使用全局配置
+     *
+     * @param serviceName    服务名称
+     * @param serviceVersion 服务版本
+     * @param host           主机地址
+     * @param port           端口
+     * @param strategyType   策略类型
+     * @param defaultValue   默认值
+     * @return 策略值
+     */
+    private String getDynamicStrategy(String serviceName, String serviceVersion, String host, int port,
+                                    String strategyType, String defaultValue) {
+        try {
+            RpcConfig rpcConfig = RpcApplication.getRpcConfig();
+            Registry registry = RegistryFactory.getInstance(rpcConfig.getRegistryConfig().getRegistry());
+
+            // 如果是ETCD注册中心，尝试获取动态策略
+            if (registry instanceof EtcdRegistry) {
+                EtcdRegistry etcdRegistry = (EtcdRegistry) registry;
+                String strategy = etcdRegistry.getNodeStrategy(serviceName, serviceVersion, host, port, strategyType);
+                if (strategy != null && !strategy.trim().isEmpty()) {
+                    System.out.println("Using dynamic strategy from ETCD - " + strategyType + ": " + strategy);
+                    return strategy;
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Failed to get dynamic strategy, using default. Error: " + e.getMessage());
+        }
+        return defaultValue;
+    }
+
+    /**
+     * 记录调用指标到ETCD
+     *
+     * @param serviceName    服务名称
+     * @param serviceVersion 服务版本
+     * @param host           主机地址
+     * @param port           端口
+     * @param duration       调用耗时
+     * @param success        是否成功
+     */
+    private void recordCallMetrics(String serviceName, String serviceVersion, String host, int port,
+                                  long duration, boolean success) {
+        try {
+            RpcConfig rpcConfig = RpcApplication.getRpcConfig();
+            Registry registry = RegistryFactory.getInstance(rpcConfig.getRegistryConfig().getRegistry());
+
+            // 如果是ETCD注册中心，记录监控指标
+            if (registry instanceof EtcdRegistry) {
+                EtcdRegistry etcdRegistry = (EtcdRegistry) registry;
+
+                // 增加调用次数
+                etcdRegistry.incrementMetrics(serviceName, serviceVersion, host, port, "calls", 1);
+
+                if (success) {
+                    // 增加成功次数
+                    etcdRegistry.incrementMetrics(serviceName, serviceVersion, host, port, "success", 1);
+                } else {
+                    // 增加失败次数
+                    etcdRegistry.incrementMetrics(serviceName, serviceVersion, host, port, "failure", 1);
+                }
+
+                // 更新平均耗时（简单移动平均）
+                etcdRegistry.recordMetrics(serviceName, serviceVersion, host, port, "avg_time", String.valueOf(duration));
+            }
+        } catch (Exception e) {
+            // 监控记录失败不应该影响主业务流程
+            System.err.println("Failed to record call metrics: " + e.getMessage());
+        }
+    }
 
     /**
      * 调用代理
@@ -66,30 +140,51 @@ public class ServiceProxy implements InvocationHandler {
             throw new RuntimeException("暂无服务地址");
         }
 
-        // 负载均衡
-        LoadBalancer loadBalancer = LoadBalancerFactory.getInstance(rpcConfig.getLoadBalancer());
+        // 负载均衡 - 使用动态策略
+        ServiceMetaInfo selectedServiceMetaInfo = serviceMetaInfoList.get(0); // 先选择第一个服务获取地址信息
+        String serviceNameStr = serviceMetaInfo.getServiceName();
+        String serviceVersionStr = serviceMetaInfo.getServiceVersion();
+        String host = selectedServiceMetaInfo.getServiceHost();
+        int port = selectedServiceMetaInfo.getServicePort();
+
+        // 从ETCD获取动态负载均衡策略
+        String loadBalanceStrategy = getDynamicStrategy(serviceNameStr, serviceVersionStr, host, port,
+                "loadbalance", rpcConfig.getLoadBalancer());
+        LoadBalancer loadBalancer = LoadBalancerFactory.getInstance(loadBalanceStrategy);
+
         // 将调用方法名（请求路径）作为负载均衡参数
         Map<String, Object> requestParams = new HashMap<>();
         requestParams.put("methodName", rpcRequest.getMethodName());
-        ServiceMetaInfo selectedServiceMetaInfo = loadBalancer.select(requestParams, serviceMetaInfoList);
-//            // http 请求
-//            // 指定序列化器
-//            Serializer serializer = SerializerFactory.getInstance(RpcApplication.getRpcConfig().getSerializer());
-//            byte[] bodyBytes = serializer.serialize(rpcRequest);
-//            RpcResponse rpcResponse = doHttpRequest(selectedServiceMetaInfo, bodyBytes, serializer);
-        // rpc 请求
-        // 使用重试机制
+        ServiceMetaInfo finalSelectedServiceMetaInfo = loadBalancer.select(requestParams, serviceMetaInfoList);
+
+        // rpc 请求 - 使用动态重试和容错策略
         RpcResponse rpcResponse;
+        long startTime = System.currentTimeMillis();
+        boolean success = false;
+
         try {
-            RetryStrategy retryStrategy = RetryStrategyFactory.getInstance(rpcConfig.getRetryStrategy());
-            rpcResponse = retryStrategy.doRetry(() ->
-                    VertxTcpClient.doRequest(rpcRequest, selectedServiceMetaInfo)
+            // 从ETCD获取动态重试策略
+            String retryStrategy = getDynamicStrategy(serviceNameStr, serviceVersionStr, host, port,
+                    "retry", rpcConfig.getRetryStrategy());
+            RetryStrategy retryStrategyInstance = RetryStrategyFactory.getInstance(retryStrategy);
+
+            rpcResponse = retryStrategyInstance.doRetry(() ->
+                    VertxTcpClient.doRequest(rpcRequest, finalSelectedServiceMetaInfo)
             );
+            success = true;
         } catch (Exception e) {
-            // 容错机制
-            TolerantStrategy tolerantStrategy = TolerantStrategyFactory.getInstance(rpcConfig.getTolerantStrategy());
-            rpcResponse = tolerantStrategy.doTolerant(null, e);
+            // 从ETCD获取动态容错策略
+            String tolerantStrategy = getDynamicStrategy(serviceNameStr, serviceVersionStr, host, port,
+                    "tolerant", rpcConfig.getTolerantStrategy());
+            TolerantStrategy tolerantStrategyInstance = TolerantStrategyFactory.getInstance(tolerantStrategy);
+
+            rpcResponse = tolerantStrategyInstance.doTolerant(null, e);
+        } finally {
+            // 记录调用指标
+            long duration = System.currentTimeMillis() - startTime;
+            recordCallMetrics(serviceNameStr, serviceVersionStr, host, port, duration, success);
         }
+
         return rpcResponse.getData();
     }
 

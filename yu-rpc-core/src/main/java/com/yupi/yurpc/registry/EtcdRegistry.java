@@ -8,6 +8,8 @@ import cn.hutool.json.JSONUtil;
 import com.yupi.yurpc.config.RegistryConfig;
 import com.yupi.yurpc.model.ServiceMetaInfo;
 import io.etcd.jetcd.*;
+import io.etcd.jetcd.kv.GetResponse;
+import io.etcd.jetcd.kv.PutResponse;
 import io.etcd.jetcd.options.GetOption;
 import io.etcd.jetcd.options.PutOption;
 import io.etcd.jetcd.watch.WatchEvent;
@@ -224,5 +226,176 @@ public class EtcdRegistry implements Registry {
         if (client != null) {
             client.close();
         }
+    }
+
+    // ========== 配置中心相关方法 ==========
+
+    /**
+     * 获取节点策略配置
+     *
+     * @param serviceName   服务名称
+     * @param version       服务版本
+     * @param host          主机地址
+     * @param port          端口
+     * @param strategyType  策略类型 (loadbalance, retry, tolerant, weight)
+     * @return 策略配置值
+     */
+    public String getNodeStrategy(String serviceName, String version, String host, int port, String strategyType) {
+        String key = String.format("/rpc/strategy/%s:%s/%s:%d/%s", serviceName, version, host, port, strategyType);
+        try {
+            GetResponse response = kvClient.get(ByteSequence.from(key, StandardCharsets.UTF_8)).get();
+            List<KeyValue> keyValues = response.getKvs();
+            if (keyValues.isEmpty()) {
+                return null;
+            }
+            return keyValues.get(0).getValue().toString(StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            System.err.println("Failed to get node strategy for key: " + key + ", error: " + e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * 发布节点策略配置
+     *
+     * @param serviceName   服务名称
+     * @param version       服务版本
+     * @param host          主机地址
+     * @param port          端口
+     * @param strategyType  策略类型
+     * @param value         策略值
+     */
+    public void publishNodeStrategy(String serviceName, String version, String host, int port,
+                                   String strategyType, String value) {
+        String key = String.format("/rpc/strategy/%s:%s/%s:%d/%s", serviceName, version, host, port, strategyType);
+        try {
+            ByteSequence keyByteSeq = ByteSequence.from(key, StandardCharsets.UTF_8);
+            ByteSequence valueByteSeq = ByteSequence.from(value, StandardCharsets.UTF_8);
+            PutResponse response = kvClient.put(keyByteSeq, valueByteSeq).get();
+            System.out.println("Published strategy config - Key: " + key + ", Value: " + value);
+        } catch (Exception e) {
+            System.err.println("Failed to publish node strategy for key: " + key + ", error: " + e.getMessage());
+            throw new RuntimeException("发布节点策略配置失败", e);
+        }
+    }
+
+    /**
+     * 记录监控指标
+     *
+     * @param serviceName  服务名称
+     * @param version      服务版本
+     * @param host         主机地址
+     * @param port         端口
+     * @param metricType   指标类型 (calls, success, failure, avg_time)
+     * @param value        指标值
+     */
+    public void recordMetrics(String serviceName, String version, String host, int port,
+                            String metricType, String value) {
+        String key = String.format("/rpc/metrics/%s:%s/%s:%d/%s", serviceName, version, host, port, metricType);
+        try {
+            ByteSequence keyByteSeq = ByteSequence.from(key, StandardCharsets.UTF_8);
+            ByteSequence valueByteSeq = ByteSequence.from(value, StandardCharsets.UTF_8);
+            kvClient.put(keyByteSeq, valueByteSeq).get();
+        } catch (Exception e) {
+            // 监控记录失败不应该影响主业务流程
+            System.err.println("Failed to record metrics for key: " + key + ", error: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 增量更新监控指标
+     *
+     * @param serviceName  服务名称
+     * @param version      服务版本
+     * @param host         主机地址
+     * @param port         端口
+     * @param metricType   指标类型
+     * @param increment    增量值
+     */
+    public void incrementMetrics(String serviceName, String version, String host, int port,
+                                String metricType, long increment) {
+        String key = String.format("/rpc/metrics/%s:%s/%s:%d/%s", serviceName, version, host, port, metricType);
+        try {
+            // 先获取当前值
+            GetResponse response = kvClient.get(ByteSequence.from(key, StandardCharsets.UTF_8)).get();
+            List<KeyValue> keyValues = response.getKvs();
+
+            long currentValue = 0;
+            if (!keyValues.isEmpty()) {
+                String valueStr = keyValues.get(0).getValue().toString(StandardCharsets.UTF_8);
+                try {
+                    currentValue = Long.parseLong(valueStr);
+                } catch (NumberFormatException e) {
+                    currentValue = 0;
+                }
+            }
+
+            // 更新值
+            long newValue = currentValue + increment;
+            ByteSequence keyByteSeq = ByteSequence.from(key, StandardCharsets.UTF_8);
+            ByteSequence valueByteSeq = ByteSequence.from(String.valueOf(newValue), StandardCharsets.UTF_8);
+            kvClient.put(keyByteSeq, valueByteSeq).get();
+
+        } catch (Exception e) {
+            // 监控记录失败不应该影响主业务流程
+            System.err.println("Failed to increment metrics for key: " + key + ", error: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 获取所有键值对（用于管理界面）
+     *
+     * @param prefix 键前缀
+     * @return 键值对列表
+     */
+    public List<KeyValue> getAllKeys(String prefix) {
+        try {
+            GetOption getOption = GetOption.builder().isPrefix(true).build();
+            GetResponse response = kvClient.get(ByteSequence.from(prefix, StandardCharsets.UTF_8), getOption).get();
+            return response.getKvs();
+        } catch (Exception e) {
+            System.err.println("Failed to get all keys with prefix: " + prefix + ", error: " + e.getMessage());
+            throw new RuntimeException("获取键值对失败", e);
+        }
+    }
+
+    /**
+     * 设置键值对（用于管理界面）
+     *
+     * @param key   键
+     * @param value 值
+     */
+    public void setKeyValue(String key, String value) {
+        try {
+            ByteSequence keyByteSeq = ByteSequence.from(key, StandardCharsets.UTF_8);
+            ByteSequence valueByteSeq = ByteSequence.from(value, StandardCharsets.UTF_8);
+            kvClient.put(keyByteSeq, valueByteSeq).get();
+        } catch (Exception e) {
+            System.err.println("Failed to set key-value - Key: " + key + ", error: " + e.getMessage());
+            throw new RuntimeException("设置键值对失败", e);
+        }
+    }
+
+    /**
+     * 删除键值对（用于管理界面）
+     *
+     * @param key 键
+     */
+    public void deleteKeyValue(String key) {
+        try {
+            kvClient.delete(ByteSequence.from(key, StandardCharsets.UTF_8)).get();
+        } catch (Exception e) {
+            System.err.println("Failed to delete key: " + key + ", error: " + e.getMessage());
+            throw new RuntimeException("删除键值对失败", e);
+        }
+    }
+
+    /**
+     * 获取ETCD客户端（用于管理界面）
+     *
+     * @return ETCD客户端
+     */
+    public Client getClient() {
+        return client;
     }
 }

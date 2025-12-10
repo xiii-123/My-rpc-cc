@@ -28,12 +28,12 @@ public class RpcApplication {
      */
     public static void init(RpcConfig newRpcConfig) {
         rpcConfig = newRpcConfig;
-        log.info("rpc init, config = {}", newRpcConfig.toString());
+        log.info("RPC init, config = {}", newRpcConfig.toString());
         // 注册中心初始化
         RegistryConfig registryConfig = rpcConfig.getRegistryConfig();
         Registry registry = RegistryFactory.getInstance(registryConfig.getRegistry());
         registry.init(registryConfig);
-        log.info("registry init, config = {}", registryConfig);
+        log.info("Registry init, config = {}", registryConfig);
         // 创建并注册 Shutdown Hook，JVM 退出时执行操作
         Runtime.getRuntime().addShutdownHook(new Thread(registry::destroy));
     }

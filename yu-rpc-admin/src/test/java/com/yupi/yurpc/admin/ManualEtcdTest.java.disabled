@@ -1,0 +1,482 @@
+package com.yupi.yurpc.admin;
+
+import com.yupi.yurpc.admin.controller.EtcdManagementController;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.CommandLineRunner;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+import org.springframework.context.annotation.Import;
+import org.springframework.stereotype.Component;
+
+import java.util.Scanner;
+
+/**
+ * 手动ETCD测试工具
+ *
+ * 使用方法：
+ * 1. 确保ETCD服务运行在 http://localhost:2379
+ * 2. 启动后端服务：mvn spring-boot:run
+ * 3. 运行此类：mvn exec:java -Dexec.mainClass="com.yupi.yurpc.admin.ManualEtcdTest"
+ * 4. 按照菜单提示操作
+ *
+ * @author Claude
+ */
+@SpringBootApplication
+@Import({EtcdManagementController.class})
+public class ManualEtcdTest {
+
+    @Autowired
+    private EtcdManagementController etcdController;
+
+    public static void main(String[] args) {
+        SpringApplication.run(ManualEtcdTest.class, args);
+    }
+
+    @Component
+    public static class TestRunner implements CommandLineRunner {
+
+        @Autowired
+        private EtcdManagementController etcdController;
+
+        @Override
+        public void run(String... args) throws Exception {
+            Scanner scanner = new Scanner(System.in);
+
+            System.out.println("===========================================");
+            System.out.println("      yu-rpc ETCD配置中心手动测试工具");
+            System.out.println("===========================================");
+            System.out.println();
+
+            while (true) {
+                showMenu();
+                System.out.print("请选择操作 (1-12, 0退出): ");
+
+                try {
+                    int choice = Integer.parseInt(scanner.nextLine());
+
+                    if (choice == 0) {
+                        System.out.println("退出测试工具");
+                        break;
+                    }
+
+                    switch (choice) {
+                        case 1:
+                            testCreateKeyValue(scanner);
+                            break;
+                        case 2:
+                            testGetKeyValue(scanner);
+                            break;
+                        case 3:
+                            testUpdateKeyValue(scanner);
+                            break;
+                        case 4:
+                            testDeleteKeyValue(scanner);
+                            break;
+                        case 5:
+                            testQueryByPrefix(scanner);
+                            break;
+                        case 6:
+                            testServiceRegistration(scanner);
+                            break;
+                        case 7:
+                            testStrategyConfiguration(scanner);
+                            break;
+                        case 8:
+                            testMetricsData(scanner);
+                            break;
+                        case 9:
+                            testPublishNodeStrategy(scanner);
+                            break;
+                        case 10:
+                            testGetNodeStrategy(scanner);
+                            break;
+                        case 11:
+                            testBatchOperations(scanner);
+                            break;
+                        case 12:
+                            testCleanup(scanner);
+                            break;
+                        default:
+                            System.out.println("无效选择，请重新输入");
+                    }
+                } catch (NumberFormatException e) {
+                    System.out.println("请输入有效的数字");
+                } catch (Exception e) {
+                    System.out.println("操作失败: " + e.getMessage());
+                    e.printStackTrace();
+                }
+
+                System.out.println();
+                System.out.println("按回车键继续...");
+                scanner.nextLine();
+            }
+        }
+
+        private void showMenu() {
+            System.out.println("===== 测试菜单 =====");
+            System.out.println("1.  创建键值对");
+            System.out.println("2.  获取单个键值对");
+            System.out.println("3.  更新键值对");
+            System.out.println("4.  删除键值对");
+            System.out.println("5.  按前缀查询");
+            System.out.println("6.  服务注册模拟");
+            System.out.println("7.  策略配置模拟");
+            System.out.println("8.  监控数据模拟");
+            System.out.println("9.  发布节点策略");
+            System.out.println("10. 获取节点策略");
+            System.out.println("11.  批量操作演示");
+            System.out.println("12.  清理测试数据");
+            System.out.println("0.  退出");
+            System.out.println("==================");
+        }
+
+        private void testCreateKeyValue(Scanner scanner) {
+            System.out.println("\n--- 创建键值对 ---");
+            System.out.print("请输入键名 (例如: /rpc/test/key1): ");
+            String key = scanner.nextLine();
+
+            System.out.print("请输入值: ");
+            String value = scanner.nextLine();
+
+            com.yupi.yurpc.admin.dto.KeyValueDTO dto = new com.yupi.yurpc.admin.dto.KeyValueDTO();
+            dto.setKey(key);
+            dto.setValue(value);
+
+            try {
+                etcdController.setKey(dto);
+                System.out.println("✓ 键值对创建成功");
+            } catch (Exception e) {
+                System.out.println("✗ 创建失败: " + e.getMessage());
+            }
+        }
+
+        private void testGetKeyValue(Scanner scanner) {
+            System.out.println("\n--- 获取键值对 ---");
+            System.out.print("请输入键名: ");
+            String key = scanner.nextLine();
+
+            try {
+                com.yupi.yurpc.admin.dto.KeyValueDTO result = etcdController.getKey(key);
+                System.out.println("✓ 获取成功:");
+                System.out.println("  Key: " + result.getKey());
+                System.out.println("  Value: " + result.getValue());
+            } catch (Exception e) {
+                System.out.println("✗ 获取失败: " + e.getMessage());
+            }
+        }
+
+        private void testUpdateKeyValue(Scanner scanner) {
+            System.out.println("\n--- 更新键值对 ---");
+            System.out.print("请输入键名: ");
+            String key = scanner.nextLine();
+
+            System.out.print("请输入新值: ");
+            String value = scanner.nextLine();
+
+            com.yupi.yurpc.admin.dto.KeyValueDTO dto = new com.yupi.yurpc.admin.dto.KeyValueDTO();
+            dto.setKey(key);
+            dto.setValue(value);
+
+            try {
+                etcdController.updateKey(dto);
+                System.out.println("✓ 键值对更新成功");
+            } catch (Exception e) {
+                System.out.println("✗ 更新失败: " + e.getMessage());
+            }
+        }
+
+        private void testDeleteKeyValue(Scanner scanner) {
+            System.out.println("\n--- 删除键值对 ---");
+            System.out.print("请输入要删除的键名: ");
+            String key = scanner.nextLine();
+
+            try {
+                etcdController.deleteKey(key);
+                System.out.println("✓ 键值对删除成功");
+            } catch (Exception e) {
+                System.out.println("✗ 删除失败: " + e.getMessage());
+            }
+        }
+
+        private void testQueryByPrefix(Scanner scanner) {
+            System.out.println("\n--- 按前缀查询 ---");
+            System.out.print("请输入前缀 (例如: /rpc): ");
+            String prefix = scanner.nextLine();
+
+            try {
+                java.util.List<com.yupi.yurpc.admin.dto.KeyValueDTO> results = etcdController.getKeys(prefix);
+                System.out.println("✓ 查询成功，找到 " + results.size() + " 个键值对:");
+
+                for (com.yupi.yurpc.admin.dto.KeyValueDTO dto : results) {
+                    System.out.println("  - " + dto.getKey() + " = " + dto.getValue());
+                }
+            } catch (Exception e) {
+                System.out.println("✗ 查询失败: " + e.getMessage());
+            }
+        }
+
+        private void testServiceRegistration(Scanner scanner) {
+            System.out.println("\n--- 服务注册模拟 ---");
+            System.out.print("请输入服务名称 (例如: UserService): ");
+            String serviceName = scanner.nextLine();
+
+            System.out.print("请输入服务版本 (例如: 1.0): ");
+            String version = scanner.nextLine();
+
+            System.out.print("请输入主机地址 (例如: localhost): ");
+            String host = scanner.nextLine();
+
+            System.out.print("请输入端口 (例如: 8080): ");
+            int port = Integer.parseInt(scanner.nextLine());
+
+            String key = String.format("/rpc/%s:%s/%s:%d", serviceName, version, host, port);
+            String value = String.format(
+                "{\"serviceName\":\"%s\",\"serviceVersion\":\"%s\",\"serviceHost\":\"%s\",\"servicePort\":%d,\"serviceGroup\":\"default\"}",
+                serviceName, version, host, port
+            );
+
+            com.yupi.yurpc.admin.dto.KeyValueDTO dto = new com.yupi.yurpc.admin.dto.KeyValueDTO();
+            dto.setKey(key);
+            dto.setValue(value);
+
+            try {
+                etcdController.setKey(dto);
+                System.out.println("✓ 服务注册信息创建成功");
+                System.out.println("  Key: " + key);
+            } catch (Exception e) {
+                System.out.println("✗ 注册失败: " + e.getMessage());
+            }
+        }
+
+        private void testStrategyConfiguration(Scanner scanner) {
+            System.out.println("\n--- 策略配置模拟 ---");
+            System.out.println("可用策略: loadbalance, retry, tolerant, weight");
+            System.out.print("请输入策略类型: ");
+            String strategyType = scanner.nextLine();
+
+            System.out.print("请输入服务名称: ");
+            String serviceName = scanner.nextLine();
+
+            System.out.print("请输入服务版本: ");
+            String version = scanner.nextLine();
+
+            System.out.print("请输入主机地址: ");
+            String host = scanner.nextLine();
+
+            System.out.print("请输入端口: ");
+            int port = Integer.parseInt(scanner.nextLine());
+
+            System.out.print("请输入策略值 (例如: round_robin): ");
+            String value = scanner.nextLine();
+
+            String key = String.format("/rpc/strategy/%s:%s/%s:%d/%s", serviceName, version, host, port, strategyType);
+
+            com.yupi.yurpc.admin.dto.KeyValueDTO dto = new com.yupi.yurpc.admin.dto.KeyValueDTO();
+            dto.setKey(key);
+            dto.setValue(value);
+
+            try {
+                etcdController.setKey(dto);
+                System.out.println("✓ 策略配置创建成功");
+                System.out.println("  Key: " + key);
+                System.out.println("  Value: " + value);
+            } catch (Exception e) {
+                System.out.println("✗ 配置失败: " + e.getMessage());
+            }
+        }
+
+        private void testMetricsData(Scanner scanner) {
+            System.out.println("\n--- 监控数据模拟 ---");
+            System.out.println("可用指标: calls, success, failure, avg_time");
+            System.out.print("请输入指标类型: ");
+            String metricType = scanner.nextLine();
+
+            System.out.print("请输入服务名称: ");
+            String serviceName = scanner.nextLine();
+
+            System.out.print("请输入服务版本: ");
+            String version = scanner.nextLine();
+
+            System.out.print("请输入主机地址: ");
+            String host = scanner.nextLine();
+
+            System.out.print("请输入端口: ");
+            int port = Integer.parseInt(scanner.nextLine());
+
+            System.out.print("请输入指标值: ");
+            String value = scanner.nextLine();
+
+            String key = String.format("/rpc/metrics/%s:%s/%s:%d/%s", serviceName, version, host, port, metricType);
+
+            com.yupi.yurpc.admin.dto.KeyValueDTO dto = new com.yupi.yurpc.admin.dto.KeyValueDTO();
+            dto.setKey(key);
+            dto.setValue(value);
+
+            try {
+                etcdController.setKey(dto);
+                System.out.println("✓ 监控数据创建成功");
+                System.out.println("  Key: " + key);
+                System.out.println("  Value: " + value);
+            } catch (Exception e) {
+                System.out.println("✗ 创建失败: " + e.getMessage());
+            }
+        }
+
+        private void testPublishNodeStrategy(Scanner scanner) {
+            System.out.println("\n--- 发布节点策略 ---");
+            System.out.print("请输入服务名称: ");
+            String serviceName = scanner.nextLine();
+
+            System.out.print("请输入服务版本: ");
+            String version = scanner.nextLine();
+
+            System.out.print("请输入主机地址: ");
+            String host = scanner.nextLine();
+
+            System.out.print("请输入端口: ");
+            int port = Integer.parseInt(scanner.nextLine());
+
+            System.out.print("请输入策略类型 (例如: loadbalance): ");
+            String strategyType = scanner.nextLine();
+
+            System.out.print("请输入策略值: ");
+            String value = scanner.nextLine();
+
+            try {
+                etcdController.publishNodeStrategy(serviceName, version, host, port, strategyType, value);
+                System.out.println("✓ 节点策略发布成功");
+                System.out.println("  服务: " + serviceName + ":" + version);
+                System.out.println("  节点: " + host + ":" + port);
+                System.out.println("  策略: " + strategyType + " = " + value);
+            } catch (Exception e) {
+                System.out.println("✗ 发布失败: " + e.getMessage());
+            }
+        }
+
+        private void testGetNodeStrategy(Scanner scanner) {
+            System.out.println("\n--- 获取节点策略 ---");
+            System.out.print("请输入服务名称: ");
+            String serviceName = scanner.nextLine();
+
+            System.out.print("请输入服务版本: ");
+            String version = scanner.nextLine();
+
+            System.out.print("请输入主机地址: ");
+            String host = scanner.nextLine();
+
+            System.out.print("请输入端口: ");
+            int port = Integer.parseInt(scanner.nextLine());
+
+            System.out.print("请输入策略类型: ");
+            String strategyType = scanner.nextLine();
+
+            try {
+                String value = etcdController.getNodeStrategy(serviceName, version, host, port, strategyType);
+                System.out.println("✓ 节点策略获取成功");
+                System.out.println("  服务: " + serviceName + ":" + version);
+                System.out.println("  节点: " + host + ":" + port);
+                System.out.println("  策略: " + strategyType + " = " + value);
+
+                if (value == null) {
+                    System.out.println("  (该节点未配置此策略)");
+                }
+            } catch (Exception e) {
+                System.out.println("✗ 获取失败: " + e.getMessage());
+            }
+        }
+
+        private void testBatchOperations(Scanner scanner) {
+            System.out.println("\n--- 批量操作演示 ---");
+            String serviceName = "BatchTestService";
+            String version = "1.0";
+            String host = "localhost";
+            int port = 8085;
+
+            try {
+                // 批量创建服务注册
+                String serviceKey = String.format("/rpc/%s:%s/%s:%d", serviceName, version, host, port);
+                com.yupi.yurpc.admin.dto.KeyValueDTO serviceDto = new com.yupi.yurpc.admin.dto.KeyValueDTO();
+                serviceDto.setKey(serviceKey);
+                serviceDto.setValue(String.format(
+                    "{\"serviceName\":\"%s\",\"serviceVersion\":\"%s\",\"serviceHost\":\"%s\",\"servicePort\":%d}",
+                    serviceName, version, host, port
+                ));
+                etcdController.setKey(serviceDto);
+                System.out.println("✓ 服务注册创建完成");
+
+                // 批量创建策略配置
+                String[][] strategies = {
+                    {"loadbalance", "round_robin"},
+                    {"retry", "fixed_interval"},
+                    {"tolerant", "fail_fast"}
+                };
+
+                for (String[] strategy : strategies) {
+                    String strategyKey = String.format("/rpc/strategy/%s:%s/%s:%d/%s", serviceName, version, host, port, strategy[0]);
+                    com.yupi.yurpc.admin.dto.KeyValueDTO strategyDto = new com.yupi.yurpc.admin.dto.KeyValueDTO();
+                    strategyDto.setKey(strategyKey);
+                    strategyDto.setValue(strategy[1]);
+                    etcdController.setKey(strategyDto);
+                    System.out.println("✓ 策略配置创建完成: " + strategy[0] + " = " + strategy[1]);
+                    Thread.sleep(100); // 避免请求过快
+                }
+
+                // 批量创建监控数据
+                String[][] metrics = {
+                    {"calls", "1000"},
+                    {"success", "950"},
+                    {"failure", "50"},
+                    {"avg_time", "120"}
+                };
+
+                for (String[] metric : metrics) {
+                    String metricKey = String.format("/rpc/metrics/%s:%s/%s:%d/%s", serviceName, version, host, port, metric[0]);
+                    com.yupi.yurpc.admin.dto.KeyValueDTO metricDto = new com.yupi.yurpc.admin.dto.KeyValueDTO();
+                    metricDto.setKey(metricKey);
+                    metricDto.setValue(metric[1]);
+                    etcdController.setKey(metricDto);
+                    System.out.println("✓ 监控数据创建完成: " + metric[0] + " = " + metric[1]);
+                    Thread.sleep(100); // 避免请求过快
+                }
+
+                // 查询所有配置
+                java.util.List<com.yupi.yurpc.admin.dto.KeyValueDTO> results = etcdController.getKeys("/rpc");
+                System.out.println("✓ 批量操作完成，共创建 " + results.size() + " 个配置项");
+
+            } catch (Exception e) {
+                System.out.println("✗ 批量操作失败: " + e.getMessage());
+            }
+        }
+
+        private void testCleanup(Scanner scanner) {
+            System.out.println("\n--- 清理测试数据 ---");
+            System.out.print("确认要清理所有测试数据吗？(y/N): ");
+            String confirm = scanner.nextLine();
+
+            if (!"y".equalsIgnoreCase(confirm) && !"Y".equalsIgnoreCase(confirm)) {
+                System.out.println("取消清理操作");
+                return;
+            }
+
+            try {
+                java.util.List<com.yupi.yurpc.admin.dto.KeyValueDTO> testKeys = etcdController.getKeys("/rpc");
+                int deletedCount = 0;
+
+                for (com.yupi.yurpc.admin.dto.KeyValueDTO dto : testKeys) {
+                    try {
+                        etcdController.deleteKey(dto.getKey());
+                        deletedCount++;
+                    } catch (Exception e) {
+                        System.out.println("删除失败: " + dto.getKey() + " - " + e.getMessage());
+                    }
+                }
+
+                System.out.println("✓ 清理完成，删除了 " + deletedCount + " 个配置项");
+
+            } catch (Exception e) {
+                System.out.println("✗ 清理失败: " + e.getMessage());
+            }
+        }
+    }
+}

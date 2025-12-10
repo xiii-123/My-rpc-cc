@@ -59,7 +59,7 @@ public class SpiLoader {
      * 加载所有类型
      */
     public static void loadAll() {
-        log.info("加载所有 SPI");
+        log.info("Loading all SPI");
         for (Class<?> aClass : LOAD_CLASS_LIST) {
             load(aClass);
         }
@@ -104,7 +104,7 @@ public class SpiLoader {
      * @throws IOException
      */
     public static Map<String, Class<?>> load(Class<?> loadClass) {
-        log.info("加载类型为 {} 的 SPI", loadClass.getName());
+        log.info("Loading SPI for type: {}", loadClass.getName());
         // 扫描路径，用户自定义的 SPI 优先级高于系统 SPI
         Map<String, Class<?>> keyClassMap = new HashMap<>();
         for (String scanDir : SCAN_DIRS) {

@@ -51,14 +51,5 @@ public @interface RpcReference {
      */
     boolean mock() default false;
 
-    /**
-     * 是否启用异步调用
-     */
-    boolean async() default false;
-
-    /**
-     * 异步调用超时时间（毫秒）
-     */
-    long timeout() default 30000;
-
+  
 }
